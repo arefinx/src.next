@@ -7,11 +7,13 @@
 
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "chrome/browser/extensions/chrome_test_extension_loader.h"
 #include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/extension_apitest.h"
@@ -27,6 +29,8 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "extensions/browser/background_script_executor.h"
+#include "extensions/browser/delayed_install_manager.h"
+#include "extensions/browser/extension_registrar.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_util.h"
 #include "extensions/browser/process_manager.h"
@@ -496,7 +500,7 @@ IN_PROC_BROWSER_TEST_F(ServiceWorkerRegistrationApiTest,
     // This also mimics update behavior if a user clicks "Update" in the
     // chrome://extensions page.
     scoped_refptr<CrxInstaller> crx_installer =
-        CrxInstaller::Create(extension_service(), /*prompt=*/nullptr);
+        CrxInstaller::Create(profile(), /*client=*/nullptr);
     crx_installer->set_error_on_unsupported_requirements(true);
     crx_installer->set_off_store_install_allow_reason(
         CrxInstaller::OffStoreInstallAllowedFromSettingsPage);
@@ -734,7 +738,8 @@ IN_PROC_BROWSER_TEST_F(ServiceWorkerRegistrationApiTest,
   // the browsingData API to remove registered service workers for extensions.
   {
     ResultCatcher result_catcher;
-    open_new_tab(browsing_data_extension->GetResourceURL("clear_data.html"));
+    open_new_tab(
+        browsing_data_extension->ResolveExtensionURL("clear_data.html"));
     EXPECT_TRUE(result_catcher.GetNextResult());
   }
 
@@ -757,8 +762,16 @@ IN_PROC_BROWSER_TEST_F(ServiceWorkerRegistrationApiTest,
 // in the service worker being seen as "updated" (which would result in a
 // "waiting" service worker, violating expectations in the extensions system).
 // https://crbug.com/1271154.
+// TODO(crbug.com/355339195): Re-enable this test
+#if BUILDFLAG(IS_LINUX) && defined(ADDRESS_SANITIZER)
+#define MAYBE_ModifyingLocalFilesForUnpackedExtensions \
+  DISABLED_ModifyingLocalFilesForUnpackedExtensions
+#else
+#define MAYBE_ModifyingLocalFilesForUnpackedExtensions \
+  ModifyingLocalFilesForUnpackedExtensions
+#endif
 IN_PROC_BROWSER_TEST_F(ServiceWorkerRegistrationApiTest,
-                       ModifyingLocalFilesForUnpackedExtensions) {
+                       MAYBE_ModifyingLocalFilesForUnpackedExtensions) {
   ASSERT_TRUE(StartEmbeddedTestServer());
   const double kUpdateDelayInMilliseconds =
       content::ServiceWorkerContext::GetUpdateDelay().InMillisecondsF();
@@ -816,7 +829,7 @@ IN_PROC_BROWSER_TEST_F(ServiceWorkerRegistrationApiTest,
   EXPECT_EQ(extension->path(), test_dir.UnpackedPath());
   EXPECT_EQ(mojom::ManifestLocation::kUnpacked, extension->location());
 
-  const GURL page_url = extension->GetResourceURL("page.html");
+  const GURL page_url = extension->ResolveExtensionURL("page.html");
   auto open_tab_and_get_result = [this, page_url]() {
     ScriptResultQueue result_queue;
     // Open the page in a new tab. We use a new tab here since any tabs open to
@@ -999,9 +1012,8 @@ IN_PROC_BROWSER_TEST_F(
         UpdateExtensionWaitForIdle(kNTPTestExtensionId, crx_v2_path,
                                    /*expected_change=*/0);
   }
-  ExtensionService* service = extension_service();
-  ASSERT_TRUE(service);
-  ASSERT_EQ(1u, service->delayed_installs()->size());
+  ASSERT_EQ(1u,
+            DelayedInstallManager::Get(profile())->delayed_installs().size());
   // v2 won't install though since v1 isn't idle (NTP page is still open) yet so
   // we're given the original `extension_v1` object.
   ASSERT_TRUE(extension_update);
@@ -1228,12 +1240,11 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerRegistrationInstallMetricBrowserTest,
   ServiceWorkerTaskQueueRegistrationObserver register_observer(
       extension()->id());
   task_queue->SetObserverForTest(&register_observer);
-  ExtensionSystem* system = ExtensionSystem::Get(profile());
   const ExtensionId extension_id = extension()->id();
   // Uninstalling frees `extension_` so we must free it here to prevent dangling
   // ptr between the uninstall and until the test is torn down.
   ReleaseExtension();
-  system->extension_service()->UninstallExtension(
+  ExtensionRegistrar::Get(profile())->UninstallExtension(
       extension_id, UNINSTALL_REASON_FOR_TESTING, nullptr);
   {
     SCOPED_TRACE(
@@ -1286,11 +1297,12 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerRegistrationRestartMetricBrowserTest,
   ServiceWorkerTaskQueueRegistrationObserver register_observer(
       extension()->id());
   task_queue->SetObserverForTest(&register_observer);
-  ExtensionSystem* system = ExtensionSystem::Get(profile());
+
+  auto* extension_registrar = ExtensionRegistrar::Get(profile());
 
   // Disable extension and wait for worker to be unregistered.
-  system->extension_service()->DisableExtension(
-      extension()->id(), disable_reason::DISABLE_USER_ACTION);
+  extension_registrar->DisableExtension(extension()->id(),
+                                        {disable_reason::DISABLE_USER_ACTION});
   {
     SCOPED_TRACE(
         "waiting for worker to be unregistered after disabling extension");
@@ -1298,7 +1310,7 @@ IN_PROC_BROWSER_TEST_P(ServiceWorkerRegistrationRestartMetricBrowserTest,
   }
 
   // Enable extension and wait for registration metric should have been emitted.
-  system->extension_service()->EnableExtension(extension()->id());
+  extension_registrar->EnableExtension(extension()->id());
   {
     SCOPED_TRACE(
         "waiting for worker to be registered after enabling extension");

@@ -5,6 +5,7 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 
 #include "base/json/json_reader.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/gmock_expected_support.h"
 #include "base/values.h"
 #include "chrome/browser/extensions/extension_service_test_base.h"
@@ -123,7 +124,8 @@ TEST_F(ChromeExtensionNavigationTest, PrepareURLForNavigation) {
     const std::string kTestPath("foo");
     auto url = ExtensionTabUtil::PrepareURLForNavigation(
         kTestPath, extension.get(), browser_context());
-    EXPECT_THAT(url, base::test::ValueIs(extension->GetResourceURL(kTestPath)));
+    EXPECT_THAT(url,
+                base::test::ValueIs(extension->ResolveExtensionURL(kTestPath)));
   }
   // A kill URL should return false and set the error. There are several
   // different potential kill URLs and this just checks one of them.
@@ -185,6 +187,13 @@ TEST_F(ChromeExtensionNavigationTest, PrepareURLForNavigation) {
     auto url = ExtensionTabUtil::PrepareURLForNavigation(
         kFileURL, /*extension=*/nullptr, browser_context());
     EXPECT_THAT(url, base::test::ValueIs(GURL(kFileURL)));
+  }
+  // Regression test for crbug.com/348405962.
+  {
+    const std::string kTestPath("mailto:8080?cc=&bcc=&subject=&body=");
+    auto url = ExtensionTabUtil::PrepareURLForNavigation(
+        kTestPath, extension.get(), browser_context());
+    EXPECT_THAT(url, base::test::ValueIs(GURL(kTestPath)));
   }
 }
 

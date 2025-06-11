@@ -125,7 +125,7 @@ constexpr char kNewTabHtml[] = "<html>NewTabOverride!</html>";
 
 }  // namespace
 
-using ContextType = ExtensionBrowserTest::ContextType;
+using ContextType = extensions::browser_test_util::ContextType;
 
 class ContentScriptApiTest : public ExtensionApiTest {
  public:
@@ -135,7 +135,7 @@ class ContentScriptApiTest : public ExtensionApiTest {
   ContentScriptApiTest(const ContentScriptApiTest&) = delete;
   ContentScriptApiTest& operator=(const ContentScriptApiTest&) = delete;
 
-  ~ContentScriptApiTest() override {}
+  ~ContentScriptApiTest() override = default;
 
   void SetUpOnMainThread() override {
     ExtensionApiTest::SetUpOnMainThread();
@@ -666,7 +666,7 @@ IN_PROC_BROWSER_TEST_F(ContentScriptApiTest, ContentScriptExtensionAPIs) {
   // Navigate to an extension page that will fire the event events.js is
   // listening for.
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), extension->GetResourceURL("fire_event.html"),
+      browser(), extension->ResolveExtensionURL("fire_event.html"),
       WindowOpenDisposition::NEW_FOREGROUND_TAB,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
   EXPECT_TRUE(catcher.GetNextResult());
@@ -794,7 +794,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionApiTestWithManagementPolicy,
     ExtensionManagementPolicyUpdater pref(&policy_provider_);
     pref.AddPolicyBlockedHost(extension_id, "*://example.com");
   }
-  // Some policy updating operations are performed asynchronuosly. Wait for them
+  // Some policy updating operations are performed asynchronously. Wait for them
   // to complete before installing extension.
   base::RunLoop().RunUntilIdle();
 
@@ -982,7 +982,7 @@ IN_PROC_BROWSER_TEST_F(ContentScriptApiTest,
   content::WebContents* tab_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
 
-  EXPECT_EQ(new_tab_override->GetResourceURL("newtab.html"),
+  EXPECT_EQ(new_tab_override->ResolveExtensionURL("newtab.html"),
             tab_contents->GetPrimaryMainFrame()->GetLastCommittedURL());
   EXPECT_FALSE(listener.was_satisfied());
   listener.Reset();
@@ -1462,8 +1462,8 @@ IN_PROC_BROWSER_TEST_F(ContentScriptApiTest, MhtmlIframe) {
   // Verify that the content scripts have been injected.  Content script
   // injection is important even in somewhat exotic scenarios such as here
   // (MHTML frames normally don't execute any scripts), because it is important
-  // that some extensions (such as accessbility aids) are able to inject content
-  // scripts into all frames.
+  // that some extensions (such as accessibility aids) are able to inject
+  // content scripts into all frames.
   //
   // Note that `<all_urls>` doesn't cover `cid:` subframes, so we don't wait for
   // `listener2`.
@@ -2362,7 +2362,7 @@ IN_PROC_BROWSER_TEST_F(ContentScriptApiFencedFrameTest,
   content::WebContents* tab_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
 
-  GURL extension_test_url = extension->GetResourceURL("test.html");
+  GURL extension_test_url = extension->ResolveExtensionURL("test.html");
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), extension_test_url));
 
   EXPECT_EQ(extension_test_url,

@@ -4,9 +4,10 @@
 
 #include "content/browser/child_process_launcher_helper_posix.h"
 
+#include <variant>
+
 #include "base/check.h"
 #include "base/command_line.h"
-#include "base/functional/overloaded.h"
 #include "base/metrics/field_trial.h"
 #include "base/posix/global_descriptors.h"
 #include "base/strings/string_number_conversions.h"
@@ -19,7 +20,7 @@
 #include "content/public/common/content_descriptors.h"
 #include "content/public/common/content_switches.h"
 #include "mojo/public/cpp/platform/platform_channel_endpoint.h"
-#include "third_party/abseil-cpp/absl/types/variant.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
 
 namespace content {
 namespace internal {
@@ -52,7 +53,7 @@ base::PlatformFile OpenFileIfNecessary(const base::FilePath& path,
 std::unique_ptr<PosixFileDescriptorInfo> CreateDefaultPosixFilesToMap(
     int child_process_id,
     const mojo::PlatformChannelEndpoint& mojo_channel_remote_endpoint,
-    const std::map<std::string, absl::variant<base::FilePath, base::ScopedFD>>&
+    const std::map<std::string, std::variant<base::FilePath, base::ScopedFD>>&
         files_to_preload,
     const std::string& process_type,
     base::CommandLine* command_line) {
@@ -87,20 +88,20 @@ std::unique_ptr<PosixFileDescriptorInfo> CreateDefaultPosixFilesToMap(
   SharedFileSwitchValueBuilder file_switch_value_builder;
   for (const auto& key_path_iter : files_to_preload) {
     base::MemoryMappedFile::Region region;
-    base::PlatformFile file = absl::visit(
-        base::Overloaded{[&region](const base::FilePath& file_path) {
-                           base::PlatformFile file =
-                               OpenFileIfNecessary(file_path, &region);
-                           if (file == base::kInvalidPlatformFile) {
-                             DLOG(WARNING) << "Ignoring invalid file "
-                                           << file_path.value();
-                           }
-                           return file;
-                         },
-                         [&region](const base::ScopedFD& fd) {
-                           region = base::MemoryMappedFile::Region::kWholeFile;
-                           return fd.get();
-                         }},
+    base::PlatformFile file = std::visit(
+        absl::Overload{[&region](const base::FilePath& file_path) {
+                         base::PlatformFile file =
+                             OpenFileIfNecessary(file_path, &region);
+                         if (file == base::kInvalidPlatformFile) {
+                           DLOG(WARNING)
+                               << "Ignoring invalid file " << file_path.value();
+                         }
+                         return file;
+                       },
+                       [&region](const base::ScopedFD& fd) {
+                         region = base::MemoryMappedFile::Region::kWholeFile;
+                         return fd.get();
+                       }},
         key_path_iter.second);
     if (file == base::kInvalidPlatformFile) {
       continue;

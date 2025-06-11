@@ -19,7 +19,6 @@
 #include "base/task/thread_pool.h"
 #include "base/threading/hang_watcher.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/connectors/common.h"
 #include "chrome/browser/platform_util.h"
@@ -45,12 +44,12 @@
 #include "ui/base/models/dialog_model.h"
 #include "ui/shell_dialogs/selected_file_info.h"
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/file_manager/fileapi_util.h"
 #include "content/public/browser/site_instance.h"
 #endif
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
+#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 #include "chrome/browser/safe_browsing/download_protection/download_protection_service.h"
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
@@ -61,6 +60,7 @@
 #else
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/picture_in_picture/scoped_disallow_picture_in_picture.h"
+#include "chrome/browser/picture_in_picture/scoped_tuck_picture_in_picture.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 using blink::mojom::FileChooserFileInfo;
@@ -90,8 +90,7 @@ bool IsValidProfile(Profile* profile) {
   return g_browser_process->profile_manager()->IsValidProfile(profile);
 }
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
-
+#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 // Safe Browsing checks are only applied when `params->mode` is
 // `kSave`, which is only for PPAPI requests.
 bool IsDownloadAllowedBySafeBrowsing(
@@ -136,8 +135,7 @@ void InterpretSafeBrowsingVerdict(base::OnceCallback<void(bool)> recipient,
                                   safe_browsing::DownloadCheckResult result) {
   std::move(recipient).Run(IsDownloadAllowedBySafeBrowsing(result));
 }
-
-#endif
+#endif  // BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 
 #if BUILDFLAG(IS_ANDROID)
 std::u16string GetDisplayName(const base::FilePath& content_uri) {
@@ -331,7 +329,7 @@ void FileSelectHelper::ConvertToFileChooserFileInfoList(
   if (AbortIfWebContentsDestroyed())
     return;
 
-#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_CHROMEOS)
   if (!files.empty()) {
     if (!IsValidProfile(profile_)) {
       RunFileChooserEnd();
@@ -350,7 +348,7 @@ void FileSelectHelper::ConvertToFileChooserFileInfoList(
                        this));
     return;
   }
-#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   std::vector<FileChooserFileInfoPtr> chooser_files;
   for (const auto& file : files) {
@@ -617,6 +615,10 @@ void FileSelectHelper::RunFileChooser(
           ->ShouldFileDialogBlockPictureInPicture(web_contents_)) {
     scoped_disallow_picture_in_picture_ =
         std::make_unique<ScopedDisallowPictureInPicture>();
+  } else if (PictureInPictureWindowManager::GetInstance()
+                 ->ShouldFileDialogTuckPictureInPicture(web_contents_)) {
+    scoped_tuck_picture_in_picture_ =
+        std::make_unique<ScopedTuckPictureInPicture>();
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -652,7 +654,7 @@ void FileSelectHelper::GetSanitizedFilenameOnUIThread(
 
   base::FilePath default_file_path = profile_->last_selected_directory().Append(
       GetSanitizedFileName(params->default_file_name));
-#if BUILDFLAG(FULL_SAFE_BROWSING)
+#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
   // Mode `kSave` is only for PPAPI writes, which are checked by Safe Browsing.
   // See comments on
   // //third_party/blink/public/mojom/choosers/file_chooser.mojom.
@@ -664,11 +666,10 @@ void FileSelectHelper::GetSanitizedFilenameOnUIThread(
   RunFileChooserOnUIThread(default_file_path, std::move(params));
 }
 
-#if BUILDFLAG(FULL_SAFE_BROWSING)
+#if BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 void FileSelectHelper::CheckDownloadRequestWithSafeBrowsing(
     const base::FilePath& default_file_path,
     FileChooserParamsPtr params) {
-  // Download Protection is not supported on Android.
   safe_browsing::SafeBrowsingService* sb_service =
       g_browser_process->safe_browsing_service();
 
@@ -710,7 +711,7 @@ void FileSelectHelper::ProceedWithSafeBrowsingVerdict(
   }
   RunFileChooserOnUIThread(default_file_path, std::move(params));
 }
-#endif
+#endif  // BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
 
 void FileSelectHelper::RunFileChooserOnUIThread(
     const base::FilePath& default_file_path,
@@ -795,6 +796,7 @@ void FileSelectHelper::RunFileChooserEnd() {
 
 #if !BUILDFLAG(IS_ANDROID)
   scoped_disallow_picture_in_picture_.reset();
+  scoped_tuck_picture_in_picture_.reset();
 #endif  // !BUILDFLAG(IS_ANDROID)
 
   Release();
