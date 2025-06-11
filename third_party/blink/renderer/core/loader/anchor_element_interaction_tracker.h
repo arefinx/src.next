@@ -24,6 +24,8 @@ class MouseEvent;
 class Node;
 class PointerEvent;
 
+CORE_EXPORT BASE_DECLARE_FEATURE(kPreloadingNoSamePageFragmentAnchorTracking);
+
 // Tracks pointerdown events anywhere on a document.  On receiving a pointerdown
 // event, the tracker will retrieve the valid href from the anchor element from
 // the event and will report the href value to the browser process via Mojo. The
@@ -81,7 +83,8 @@ class BLINK_EXPORT AnchorElementInteractionTracker
   explicit AnchorElementInteractionTracker(Document& document);
   virtual ~AnchorElementInteractionTracker();
 
-  static base::TimeDelta GetHoverDwellTime();
+  static constexpr base::TimeDelta kModerateHoverDwellTime{
+      base::Milliseconds(200)};
 
   void OnMouseMoveEvent(const WebMouseEvent& mouse_event);
   void OnPointerEvent(EventTarget& target, const PointerEvent& pointer_event);

@@ -32,7 +32,7 @@
 namespace extensions {
 namespace {
 
-content::WebContents* GetActiveWebContents(const Browser* browser) {
+content::WebContents* GetActiveTabWebContents(const Browser* browser) {
   return browser->tab_strip_model()->GetActiveWebContents();
 }
 
@@ -89,8 +89,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, WebContents) {
       browser(),
       GURL("chrome-extension://behllobkkfkfnphdnhnkndlbkcpglgmj/page.html")));
 
-  EXPECT_EQ(true,
-            content::EvalJs(GetActiveWebContents(browser()), "testTabsAPI()"));
+  EXPECT_EQ(true, content::EvalJs(GetActiveTabWebContents(browser()),
+                                  "testTabsAPI()"));
 
   // There was a bug where we would crash if we navigated to a page in the same
   // extension because no new render view was getting created, so we would not
@@ -98,8 +98,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, WebContents) {
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
       browser(),
       GURL("chrome-extension://behllobkkfkfnphdnhnkndlbkcpglgmj/page.html")));
-  EXPECT_EQ(true,
-            content::EvalJs(GetActiveWebContents(browser()), "testTabsAPI()"));
+  EXPECT_EQ(true, content::EvalJs(GetActiveTabWebContents(browser()),
+                                  "testTabsAPI()"));
 }
 
 // Ensure that platform app frames can't be loaded in a tab even on a redirect.
@@ -111,12 +111,12 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, TabNavigationToPlatformApp) {
       test_data_dir_.AppendASCII("platform_apps").AppendASCII("minimal"));
   ASSERT_TRUE(extension);
 
-  const GURL test_cases[] = {extension->GetResourceURL("main.html"),
+  const GURL test_cases[] = {extension->ResolveExtensionURL("main.html"),
                              BackgroundInfo::GetBackgroundURL(extension)};
   for (const GURL& app_url : test_cases) {
     GURL redirect_to_platform_app =
         embedded_test_server()->GetURL("/server-redirect?" + app_url.spec());
-    content::WebContents* web_contents = GetActiveWebContents(browser());
+    content::WebContents* web_contents = GetActiveTabWebContents(browser());
     content::TestNavigationObserver observer(web_contents,
                                              net::ERR_BLOCKED_BY_CLIENT);
     ASSERT_TRUE(
@@ -153,13 +153,14 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, BackgroundPageNavigation) {
         base::StringPrintf(kScript, target_url.spec().c_str())));
     ASSERT_TRUE(navigation_observer.WaitForNavigationFinished());
     EXPECT_FALSE(navigation_observer.was_committed());
-    EXPECT_EQ(extension->GetResourceURL("background.html"),
+    EXPECT_EQ(extension->ResolveExtensionURL("background.html"),
               background_contents->GetLastCommittedURL());
   }
 
   // A same-document navigation is still permitted.
   {
-    GURL target_url = extension->GetResourceURL("background.html#fragment");
+    GURL target_url =
+        extension->ResolveExtensionURL("background.html#fragment");
     content::TestNavigationManager navigation_observer(background_contents,
                                                        target_url);
     constexpr char kScript[] = "window.location.href = '%s'";
@@ -173,7 +174,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, BackgroundPageNavigation) {
 
   // Another same-document navigation case.
   {
-    GURL target_url = extension->GetResourceURL("bar.html");
+    GURL target_url = extension->ResolveExtensionURL("bar.html");
     content::TestNavigationManager navigation_observer(background_contents,
                                                        target_url);
     constexpr char kScript[] = "history.pushState({}, '', '%s')";
@@ -190,7 +191,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, BackgroundPageNavigation) {
 // navigation.
 IN_PROC_BROWSER_TEST_F(ExtensionBrowserTest, ExtensionNavigationUIData) {
   ASSERT_TRUE(embedded_test_server()->Start());
-  content::WebContents* web_contents = GetActiveWebContents(browser());
+  content::WebContents* web_contents = GetActiveTabWebContents(browser());
   ExtensionNavigationUIDataObserver observer(web_contents);
 
   // Load a page with an iframe.

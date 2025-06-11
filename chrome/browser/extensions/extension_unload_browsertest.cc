@@ -7,7 +7,6 @@
 #include "base/run_loop.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/extension_browsertest.h"
-#include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
@@ -20,6 +19,7 @@
 #include "content/public/test/test_navigation_observer.h"
 #include "content/public/test/test_utils.h"
 #include "extensions/browser/disable_reason.h"
+#include "extensions/browser/extension_registrar.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "extensions/test/test_extension_dir.h"
@@ -91,7 +91,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionUnloadBrowserTest, TestUnload) {
   GURL initial_tab_url =
       browser()->tab_strip_model()->GetWebContentsAt(0)->GetLastCommittedURL();
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), extension->GetResourceURL("page.html"),
+      browser(), extension->ResolveExtensionURL("page.html"),
       WindowOpenDisposition::NEW_FOREGROUND_TAB,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   EXPECT_EQ(2, browser()->tab_strip_model()->count());
@@ -189,8 +189,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionUnloadBrowserTest, OpenedOpaqueWindows) {
 
   TestTabStripModelObserver test_tab_strip_model_observer(
       browser()->tab_strip_model());
-  extension_service()->DisableExtension(extension->id(),
-                                        disable_reason::DISABLE_USER_ACTION);
+  extension_registrar()->DisableExtension(
+      extension->id(), {disable_reason::DISABLE_USER_ACTION});
   test_tab_strip_model_observer.WaitForTabCount(1);
 
   EXPECT_EQ(1, browser()->tab_strip_model()->count());
@@ -209,7 +209,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionUnloadBrowserTest, CrashedTabs) {
   scoped_refptr<const Extension> extension(
       LoadExtension(test_dir.UnpackedPath()));
   ASSERT_TRUE(extension);
-  const GURL page_url = extension->GetResourceURL("page.html");
+  const GURL page_url = extension->ResolveExtensionURL("page.html");
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), page_url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
@@ -240,8 +240,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionUnloadBrowserTest, CrashedTabs) {
   // still the extension's origin.
   TestTabStripModelObserver test_tab_strip_model_observer(
       browser()->tab_strip_model());
-  extension_service()->DisableExtension(extension->id(),
-                                        disable_reason::DISABLE_USER_ACTION);
+  extension_registrar()->DisableExtension(
+      extension->id(), {disable_reason::DISABLE_USER_ACTION});
   test_tab_strip_model_observer.WaitForTabCount(1);
 
   EXPECT_EQ(1, browser()->tab_strip_model()->count());

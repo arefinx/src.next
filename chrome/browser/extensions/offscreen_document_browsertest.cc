@@ -49,7 +49,7 @@ class OffscreenDocumentBrowserTest : public ExtensionApiTest {
     content::TestNavigationObserver navigation_observer(url);
     navigation_observer.StartWatchingNewWebContents();
     auto offscreen_document = std::make_unique<OffscreenDocumentHost>(
-        extension, site_instance.get(), url);
+        extension, site_instance.get(), profile(), url);
     offscreen_document->CreateRendererSoon();
     navigation_observer.Wait();
     EXPECT_TRUE(navigation_observer.last_navigation_succeeded());
@@ -87,7 +87,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
   ProcessManager* const process_manager = ProcessManager::Get(profile());
 
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
@@ -108,7 +108,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   EXPECT_EQ(mojom::ViewType::kOffscreenDocument, GetViewType(contents));
   // The offscreen document should be marked as never composited, excluding it
   // from certain a11y considerations.
-  EXPECT_TRUE(contents->GetDelegate()->IsNeverComposited(contents));
+  EXPECT_TRUE(contents->IsNeverComposited());
 
   {
     // Check the registration in the ProcessManager: the offscreen document
@@ -137,7 +137,8 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   {
     mojom::ContextType context_type =
         ProcessMap::Get(profile())->GetMostLikelyContextType(
-            extension, contents->GetPrimaryMainFrame()->GetProcess()->GetID(),
+            extension,
+            contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID(),
             &offscreen_url);
     // TODO(crbug.com/40849649): The following check should be:
     //   EXPECT_EQ(mojom::ContextType::kOffscreenExtension, context_type);
@@ -166,7 +167,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
     // extension frames. Do this by comparing it to another extension page in
     // a tab.
     ASSERT_TRUE(ui_test_utils::NavigateToURL(
-        browser(), extension->GetResourceURL("other.html")));
+        browser(), extension->ResolveExtensionURL("other.html")));
     content::WebContents* tab_contents =
         browser()->tab_strip_model()->GetActiveWebContents();
     EXPECT_EQ(tab_contents->GetPrimaryMainFrame()->GetProcess(),
@@ -190,7 +191,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, APIAccessIsLimited) {
 
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
 
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
@@ -277,7 +278,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, MessagingTest) {
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
 
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
@@ -294,7 +295,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, MessagingTest) {
                "url": $2
              }
            })",
-        extension->id(), extension->GetResourceURL("background.js"));
+        extension->id(), extension->ResolveExtensionURL("background.js"));
     base::Value result = BackgroundScriptExecutor::ExecuteScript(
         profile(), extension->id(), "sendMessageFromBackground();",
         BackgroundScriptExecutor::ResultCapture::kSendScriptResult);
@@ -346,7 +347,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
 
@@ -420,7 +421,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
   content::WebContents* contents = offscreen_document->host_contents();
@@ -503,7 +504,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest,
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
   content::WebContents* contents = offscreen_document->host_contents();
@@ -537,7 +538,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, NavigationIsDisallowed) {
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
   std::unique_ptr<OffscreenDocumentHost> offscreen_document =
       CreateOffscreenDocument(*extension, offscreen_url);
   content::WebContents* contents = offscreen_document->host_contents();
@@ -559,7 +560,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, NavigationIsDisallowed) {
   // Repeat with an extension resource. This should also fail - we don't allow
   // offscreen documents to navigate themselves, even to another extension
   // resource.
-  expect_navigation_failure(extension->GetResourceURL("other.html"));
+  expect_navigation_failure(extension->ResolveExtensionURL("other.html"));
 }
 
 // Tests calling window.close() in an offscreen document.
@@ -577,7 +578,7 @@ IN_PROC_BROWSER_TEST_F(OffscreenDocumentBrowserTest, CallWindowClose) {
 
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
-  const GURL offscreen_url = extension->GetResourceURL("offscreen.html");
+  const GURL offscreen_url = extension->ResolveExtensionURL("offscreen.html");
 
   {
     std::unique_ptr<OffscreenDocumentHost> offscreen_document =

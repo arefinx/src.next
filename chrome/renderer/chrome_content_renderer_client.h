@@ -21,7 +21,7 @@
 #include "chrome/common/media/webrtc_logging.mojom.h"
 #include "chrome/services/speech/buildflags/buildflags.h"
 #include "components/nacl/common/buildflags.h"
-#include "components/safe_browsing/content/renderer/phishing_classifier/phishing_model_setter_impl.h"
+#include "components/safe_browsing/buildflags.h"
 #include "components/spellcheck/spellcheck_buildflags.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/renderer/render_thread.h"
@@ -29,7 +29,6 @@
 #include "ipc/ipc_channel_proxy.h"
 #include "media/base/key_systems_support_registration.h"
 #include "media/media_buildflags.h"
-#include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "ppapi/buildflags/buildflags.h"
@@ -45,6 +44,10 @@
 
 #if BUILDFLAG(ENABLE_PLUGINS)
 #include "chrome/common/plugin.mojom.h"
+#endif
+
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
+#include "components/safe_browsing/content/renderer/phishing_classifier/phishing_model_setter_impl.h"
 #endif
 
 class ChromeRenderThreadObserver;
@@ -231,7 +234,7 @@ class ChromeContentRendererClient
   void DidSetUserAgent(const std::string& user_agent) override;
   void AppendContentSecurityPolicy(
       const blink::WebURL& url,
-      blink::WebVector<blink::WebContentSecurityPolicyHeader>* csp) override;
+      std::vector<blink::WebContentSecurityPolicyHeader>* csp) override;
   std::unique_ptr<blink::WebLinkPreviewTriggerer> CreateLinkPreviewTriggerer()
       override;
 
@@ -309,8 +312,10 @@ class ChromeContentRendererClient
 #if BUILDFLAG(ENABLE_PLUGINS)
   std::set<std::string> allowed_camera_device_origins_;
 #endif
+#if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
   std::unique_ptr<safe_browsing::PhishingModelSetterImpl>
       phishing_model_setter_;
+#endif
 
   scoped_refptr<blink::ThreadSafeBrowserInterfaceBrokerProxy>
       browser_interface_broker_;

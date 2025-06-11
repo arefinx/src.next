@@ -5,6 +5,10 @@
 #ifndef CHROME_BROWSER_EXTENSIONS_EXTENSION_SYNC_UTIL_H_
 #define CHROME_BROWSER_EXTENSIONS_EXTENSION_SYNC_UTIL_H_
 
+#include "extensions/buildflags/buildflags.h"
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
 namespace content {
 class BrowserContext;
 }
@@ -30,11 +34,6 @@ bool IsSyncingExtensionsEnabled(Profile* profile);
 // Returns whether the current `profile` is in transport mode and syncing
 // extensions is enabled.
 bool IsSyncingExtensionsInTransportMode(Profile* profile);
-
-// Returns if the current browser supports an explicit sign in (signs the user
-// into transport mode, as defined above) for extension access points (e.g. the
-// `ExtensionInstalledBubbleView`).
-bool IsExtensionsExplicitSigninEnabled();
 
 }  // namespace sync_util
 }  // namespace extensions

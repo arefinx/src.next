@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/strings/pattern.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/values.h"
 #include "chrome/browser/extensions/extension_browsertest.h"
@@ -32,7 +33,7 @@ bool WasFrameWithScriptLoaded(content::RenderFrameHost* render_frame_host) {
 
 class ExtensionCSPBypassTest : public ExtensionBrowserTest {
  public:
-  ExtensionCSPBypassTest() {}
+  ExtensionCSPBypassTest() = default;
 
   ExtensionCSPBypassTest(const ExtensionCSPBypassTest&) = delete;
   ExtensionCSPBypassTest& operator=(const ExtensionCSPBypassTest&) = delete;
@@ -105,7 +106,7 @@ class ExtensionCSPBypassTest : public ExtensionBrowserTest {
         }
         canLoadScript();
         )",
-        extension->GetResourceURL("script.js").spec().c_str());
+        extension->ResolveExtensionURL("script.js").spec().c_str());
     return EvalJs(render_frame_host, code).ExtractBool();
   }
 
@@ -222,7 +223,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionCSPBypassTest, FrameAncestors) {
   console_observer.SetPattern(
       "Refused to frame * because an ancestor violates *");
 
-  GURL popup_url = extension->GetResourceURL("popup.html");
+  GURL popup_url = extension->ResolveExtensionURL("popup.html");
   ASSERT_TRUE(content::NavigateToURL(web_contents(), popup_url));
 
   // The iframe must be blocked because of CSP.

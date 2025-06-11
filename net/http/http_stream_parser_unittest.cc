@@ -2,16 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "net/http/http_stream_parser.h"
 
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -24,7 +20,9 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/run_loop.h"
+#include "base/strings/string_view_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "net/base/chunked_upload_data_stream.h"
@@ -1069,14 +1067,14 @@ TEST(HttpStreamParser, TruncatedHeaders) {
     MockRead(SYNCHRONOUS, 0, 2),  // EOF
   };
 
-  base::span<MockRead> reads[] = {
+  auto reads = std::to_array<base::span<MockRead>>({
       truncated_status_reads,
       truncated_after_status_reads,
       truncated_in_header_reads,
       truncated_after_header_reads,
       truncated_after_final_newline_reads,
       not_truncated_reads,
-  };
+  });
 
   MockWrite writes[] = {
     MockWrite(SYNCHRONOUS, 0, "GET / HTTP/1.1\r\n\r\n"),
@@ -1205,7 +1203,9 @@ class SimpleGetRunner {
     int offset = read_buffer_->offset();
     read_buffer_->SetCapacity(offset + data.size());
     auto span = base::as_byte_span(data);
-    read_buffer_->everything().subspan(offset, span.size()).copy_from(span);
+    read_buffer_->everything()
+        .subspan(base::checked_cast<size_t>(offset), span.size())
+        .copy_from(span);
     read_buffer_->set_offset(offset + span.size());
   }
 
@@ -1245,11 +1245,11 @@ class SimpleGetRunner {
 
   void ReadHeaders() { ReadHeadersExpectingError(OK); }
 
-  std::string ReadBody(int user_buf_len, int* read_lengths) {
+  std::string ReadBody(int user_buf_len, base::span<int> read_lengths) {
     TestCompletionCallback callback;
     auto buffer = base::MakeRefCounted<IOBufferWithSize>(user_buf_len);
     int rv;
-    int i = 0;
+    size_t i = 0;
     std::string body;
     while (true) {
       rv = parser_->ReadResponseBody(
@@ -1260,11 +1260,12 @@ class SimpleGetRunner {
         i++;
         EXPECT_EQ(read_lengths[i], rv);
       }
-      if (rv > 0)
-        body.append(buffer->data(), rv);
-      i++;
-      if (rv <= 0)
+      if (rv > 0) {
+        body.append(base::as_string_view(buffer->first(rv)));
+      } else {
         return body;
+      }
+      i++;
     }
   }
 
@@ -1593,7 +1594,7 @@ TEST(HttpStreamParser, ReceivedBytesAsyncMultiReadExcludesExtraData) {
   get_runner.ReadHeaders();
   const int headers_size = headers.size();
   EXPECT_EQ(headers_size, get_runner.parser()->received_bytes());
-  int read_lengths[] = {body_start_size, -1, body_end_size, 0};
+  int read_lengths[] = {body_start_size, ERR_IO_PENDING, body_end_size, 0};
   get_runner.ReadBody(body_start_size, read_lengths);
   const int response_size = headers_size + body_size;
   EXPECT_EQ(response_size, get_runner.parser()->received_bytes());
