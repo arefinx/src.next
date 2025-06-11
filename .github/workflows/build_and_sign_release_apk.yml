@@ -96,7 +96,21 @@ jobs:
 
       - name: Checking available disk-space
         run: df -h
+      # [This is where your actual build command runs]
+      # e.g., - name: Run Build
+      #         run: ./build_script.sh
 
+      # --- ADD THIS DEBUGGING STEP ---
+      - name: DEBUG - Find built APK files
+        run: |
+          echo "Searching for all .apk files on the runner..."
+          find / -name "*.apk" 2>/dev/null || echo "No APKs found"
+
+      - name: Uploading APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ matrix.platform }}
+          path: secondary_disk/out/android_${{ matrix.platform }}/*.apk
       # --- [Your build command would go here] ---
       # e.g., - name: Run Build
       #         run: ./build_script.sh
