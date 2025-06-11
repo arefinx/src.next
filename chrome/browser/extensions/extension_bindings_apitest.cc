@@ -65,12 +65,12 @@ void MouseUpInWebContents(content::WebContents* web_contents) {
 
 class ExtensionBindingsApiTest : public ExtensionApiTest {
  public:
-  ExtensionBindingsApiTest() {}
+  ExtensionBindingsApiTest() = default;
 
   ExtensionBindingsApiTest(const ExtensionBindingsApiTest&) = delete;
   ExtensionBindingsApiTest& operator=(const ExtensionBindingsApiTest&) = delete;
 
-  ~ExtensionBindingsApiTest() override {}
+  ~ExtensionBindingsApiTest() override = default;
 
   void SetUpOnMainThread() override {
     ExtensionApiTest::SetUpOnMainThread();
@@ -370,7 +370,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionBindingsApiTest,
 
   // Navigate the subframe to the extension URL, which should activate the
   // extension.
-  GURL extension_url(extension->GetResourceURL("page.html"));
+  GURL extension_url(extension->ResolveExtensionURL("page.html"));
   ResultCatcher catcher;
   content::NavigateIframeToURL(web_contents, "test", extension_url);
   ASSERT_TRUE(catcher.GetNextResult()) << catcher.message();
@@ -521,7 +521,7 @@ IN_PROC_BROWSER_TEST_F(
 
   // Set up: open two tabs to the same extension page, and wait for each to
   // load.
-  const GURL page_url = extension->GetResourceURL("page.html");
+  const GURL page_url = extension->ResolveExtensionURL("page.html");
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), page_url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
@@ -538,7 +538,7 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_FALSE(event_router->ExtensionHasEventListener(extension->id(),
                                                        "tabs.onCreated"));
 
-  // Register both lsiteners, and verify they were added.
+  // Register both listeners, and verify they were added.
   ASSERT_TRUE(content::ExecJs(first_tab, "registerListener()"));
   ASSERT_TRUE(content::ExecJs(second_tab, "registerListener()"));
   EXPECT_TRUE(event_router->ExtensionHasEventListener(extension->id(),
@@ -652,7 +652,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionBindingsApiTest,
   const Extension* extension = LoadExtension(test_dir.UnpackedPath());
   ASSERT_TRUE(extension);
 
-  const GURL extension_page = extension->GetResourceURL("page.html");
+  const GURL extension_page = extension->ResolveExtensionURL("page.html");
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), extension_page));
 
   content::WebContents* tab =
@@ -938,13 +938,13 @@ IN_PROC_BROWSER_TEST_F(ExtensionBindingsApiTest,
   extension_dir.WriteFile(FILE_PATH_LITERAL("page.html"), kPageHTML);
 
   const Extension* extension = LoadExtension(extension_dir.UnpackedPath());
-  const GURL target_url = extension->GetResourceURL("page.html");
+  const GURL target_url = extension->ResolveExtensionURL("page.html");
 
   ResultCatcher catcher;
   content::TestNavigationObserver observer(target_url);
   observer.StartWatchingNewWebContents();
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
-      browser(), extension->GetResourceURL("opener.html")));
+      browser(), extension->ResolveExtensionURL("opener.html")));
   EXPECT_TRUE(catcher.GetNextResult()) << catcher.message();
   observer.Wait();
   EXPECT_TRUE(observer.last_navigation_succeeded());

@@ -4,8 +4,9 @@
 
 #include "chrome/browser/extensions/extension_sync_data.h"
 
+#include "base/containers/flat_set.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_macros.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "components/crx_file/id_util.h"
@@ -13,6 +14,7 @@
 #include "components/sync/protocol/app_specifics.pb.h"
 #include "components/sync/protocol/entity_specifics.pb.h"
 #include "components/sync/protocol/extension_specifics.pb.h"
+#include "extensions/browser/disable_reason.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/manifest_url_handlers.h"
 
@@ -33,52 +35,47 @@ std::string GetExtensionSpecificsLogMessage(
       specifics.disable_reasons());
 }
 
-enum BadSyncDataReason {
+enum class BadSyncDataReason {
   // Invalid extension ID.
-  BAD_EXTENSION_ID,
+  kExtensionId,
 
   // Invalid version.
-  BAD_VERSION,
+  kVersion,
 
   // Invalid update URL.
-  BAD_UPDATE_URL,
+  kUpdateUrl,
 
   // No ExtensionSpecifics in the EntitySpecifics.
-  NO_EXTENSION_SPECIFICS,
+  kNoExtensionSpecifics,
 
   // Not used anymore; still here because of UMA.
-  DEPRECATED_BAD_DISABLE_REASONS,
+  kDeprecatedBadDisableReasons,
 
-  // Must be at the end.
-  NUM_BAD_SYNC_DATA_REASONS
+  kMaxValue = kDeprecatedBadDisableReasons,
 };
 
 void RecordBadSyncData(BadSyncDataReason reason) {
-  UMA_HISTOGRAM_ENUMERATION("Extensions.BadSyncDataReason", reason,
-                            NUM_BAD_SYNC_DATA_REASONS);
+  base::UmaHistogramEnumeration("Extensions.BadSyncDataReason", reason);
 }
 
 }  // namespace
 
-ExtensionSyncData::LinkedAppIconInfo::LinkedAppIconInfo() {
-}
+ExtensionSyncData::LinkedAppIconInfo::LinkedAppIconInfo() = default;
 
-ExtensionSyncData::LinkedAppIconInfo::~LinkedAppIconInfo() {
-}
+ExtensionSyncData::LinkedAppIconInfo::~LinkedAppIconInfo() = default;
 
 ExtensionSyncData::ExtensionSyncData()
     : is_app_(false),
       uninstalled_(false),
       enabled_(false),
       supports_disable_reasons_(false),
-      disable_reasons_(disable_reason::DISABLE_NONE),
       incognito_enabled_(false),
       remote_install_(false),
       launch_type_(LAUNCH_TYPE_INVALID) {}
 
 ExtensionSyncData::ExtensionSyncData(const Extension& extension,
                                      bool enabled,
-                                     int disable_reasons,
+                                     const base::flat_set<int>& disable_reasons,
                                      bool incognito_enabled,
                                      bool remote_install,
                                      const GURL& update_url)
@@ -94,7 +91,7 @@ ExtensionSyncData::ExtensionSyncData(const Extension& extension,
 
 ExtensionSyncData::ExtensionSyncData(const Extension& extension,
                                      bool enabled,
-                                     int disable_reasons,
+                                     const base::flat_set<int>& disable_reasons,
                                      bool incognito_enabled,
                                      bool remote_install,
                                      const GURL& update_url,
@@ -118,7 +115,7 @@ ExtensionSyncData::ExtensionSyncData(const Extension& extension,
 
 ExtensionSyncData::ExtensionSyncData(const ExtensionSyncData& other) = default;
 
-ExtensionSyncData::~ExtensionSyncData() {}
+ExtensionSyncData::~ExtensionSyncData() = default;
 
 // static
 std::unique_ptr<ExtensionSyncData> ExtensionSyncData::CreateFromSyncData(
@@ -164,8 +161,18 @@ void ExtensionSyncData::ToExtensionSpecifics(
   specifics->set_update_url(update_url_.spec());
   specifics->set_version(version_.GetString());
   specifics->set_enabled(enabled_);
-  if (supports_disable_reasons_)
-    specifics->set_disable_reasons(disable_reasons_);
+
+  // Old clients (< M135) only know about the bitflag. To maintain backwards
+  // compatibility, we populate both the bitflag and the list. Newer clients
+  // will only use the list. The bitflag will be deprecated soon. See
+  // crbug.com/372186532.
+  if (supports_disable_reasons_) {
+    specifics->set_disable_reasons(IntegerSetToBitflag(disable_reasons_));
+  }
+  for (int reason : disable_reasons_) {
+    specifics->add_disable_reasons_list(reason);
+  }
+
   specifics->set_incognito_enabled(incognito_enabled_);
   specifics->set_remote_install(remote_install_);
 }
@@ -204,7 +211,7 @@ bool ExtensionSyncData::PopulateFromExtensionSpecifics(
   if (!crx_file::id_util::IdIsValid(specifics.id())) {
     LOG(ERROR) << "Attempt to sync bad ExtensionSpecifics (bad ID):\n"
                << GetExtensionSpecificsLogMessage(specifics);
-    RecordBadSyncData(BAD_EXTENSION_ID);
+    RecordBadSyncData(BadSyncDataReason::kExtensionId);
     return false;
   }
 
@@ -212,7 +219,7 @@ bool ExtensionSyncData::PopulateFromExtensionSpecifics(
   if (!specifics_version.IsValid()) {
     LOG(ERROR) << "Attempt to sync bad ExtensionSpecifics (bad version):\n"
                << GetExtensionSpecificsLogMessage(specifics);
-    RecordBadSyncData(BAD_VERSION);
+    RecordBadSyncData(BadSyncDataReason::kVersion);
     return false;
   }
 
@@ -221,7 +228,7 @@ bool ExtensionSyncData::PopulateFromExtensionSpecifics(
   if (!specifics_update_url.is_empty() && !specifics_update_url.is_valid()) {
     LOG(ERROR) << "Attempt to sync bad ExtensionSpecifics (bad update URL):\n"
                << GetExtensionSpecificsLogMessage(specifics);
-    RecordBadSyncData(BAD_UPDATE_URL);
+    RecordBadSyncData(BadSyncDataReason::kUpdateUrl);
     return false;
   }
 
@@ -230,9 +237,25 @@ bool ExtensionSyncData::PopulateFromExtensionSpecifics(
   version_ = specifics_version;
   enabled_ = specifics.enabled();
   supports_disable_reasons_ = specifics.has_disable_reasons();
-  disable_reasons_ = specifics.disable_reasons();
   incognito_enabled_ = specifics.incognito_enabled();
   remote_install_ = specifics.remote_install();
+
+  // Deserialize disable reasons. Older clients (< M135) only send the bitflag.
+  // Newer clients send the bitflag and the list. Since bitflag will be
+  // deprecated soon (crbug.com/372186532), we prefer the list if it exists.
+  if (specifics.disable_reasons_list_size() > 0) {
+    for (int i = 0; i < specifics.disable_reasons_list_size(); ++i) {
+      disable_reasons_.insert(specifics.disable_reasons_list(i));
+    }
+  } else {
+    // We will reach here iff:
+    // 1. The client which sent the sync data is older than M135 and does not
+    // know about the list OR
+    // 2. The disable reasons are empty. In this case, the bitflag will be 0.
+    // In both cases, we will use the bitflag.
+    disable_reasons_ = BitflagToIntegerSet(specifics.disable_reasons());
+  }
+
   return true;
 }
 
@@ -279,7 +302,7 @@ bool ExtensionSyncData::PopulateFromSyncData(
     return PopulateFromExtensionSpecifics(entity_specifics.extension());
 
   LOG(ERROR) << "Attempt to sync bad EntitySpecifics: no extension data.";
-  RecordBadSyncData(NO_EXTENSION_SPECIFICS);
+  RecordBadSyncData(BadSyncDataReason::kNoExtensionSpecifics);
   return false;
 }
 

@@ -173,6 +173,9 @@ class NET_EXPORT ProxyChain {
   static constexpr int kDefaultIpProtectionChainId = 0;
 
   // The largest allowed ip_protection_chain_id.
+  // NOTE: Make sure to update the
+  // `Net.IpProtection.CanFalloverToNextProxy.Error.{Chain}` histogram when
+  // modifying this value.
   static constexpr int kMaxIpProtectionChainId = 3;
 
   bool is_for_ip_protection() const {
@@ -180,18 +183,8 @@ class NET_EXPORT ProxyChain {
   }
   int ip_protection_chain_id() const { return ip_protection_chain_id_; }
 
-  bool operator==(const ProxyChain& other) const {
-    return std::tie(proxy_server_list_, ip_protection_chain_id_) ==
-           std::tie(other.proxy_server_list_, other.ip_protection_chain_id_);
-  }
-
-  bool operator!=(const ProxyChain& other) const { return !(*this == other); }
-
-  // Comparator function so this can be placed in a std::map.
-  bool operator<(const ProxyChain& other) const {
-    return std::tie(proxy_server_list_, ip_protection_chain_id_) <
-           std::tie(other.proxy_server_list_, other.ip_protection_chain_id_);
-  }
+  friend bool operator==(const ProxyChain&, const ProxyChain&) = default;
+  friend auto operator<=>(const ProxyChain&, const ProxyChain&) = default;
 
   std::string ToDebugString() const;
 

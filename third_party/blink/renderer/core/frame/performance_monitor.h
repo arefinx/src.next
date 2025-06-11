@@ -76,7 +76,7 @@ class CORE_EXPORT PerformanceMonitor final
                                      Violation,
                                      const String& text,
                                      base::TimeDelta time,
-                                     std::unique_ptr<SourceLocation>);
+                                     SourceLocation*);
   static base::TimeDelta Threshold(ExecutionContext*, Violation);
 
   // Instrumenting methods.
@@ -112,7 +112,7 @@ class CORE_EXPORT PerformanceMonitor final
   PerformanceMonitor& operator=(const PerformanceMonitor&) = delete;
   ~PerformanceMonitor() override;
 
-  virtual void Trace(Visitor*) const;
+  void Trace(Visitor*) const;
 
  private:
   friend class PerformanceMonitorTest;
@@ -130,7 +130,7 @@ class CORE_EXPORT PerformanceMonitor final
                                    Violation,
                                    const String& text,
                                    base::TimeDelta time,
-                                   std::unique_ptr<SourceLocation>);
+                                   SourceLocation*);
 
   // TaskTimeObserver implementation
   void WillProcessTask(base::TimeTicks start_time) override;
@@ -166,7 +166,7 @@ class CORE_EXPORT PerformanceMonitor final
   v8::Isolate* const isolate_;
   bool task_has_multiple_contexts_ = false;
   bool task_should_be_reported_ = false;
-  using ClientThresholds = HeapHashMap<WeakMember<Client>, base::TimeDelta>;
+  using ClientThresholds = GCedHeapHashMap<WeakMember<Client>, base::TimeDelta>;
   HeapHashMap<Violation,
               Member<ClientThresholds>,
               IntWithZeroKeyHashTraits<size_t>>

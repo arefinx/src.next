@@ -6,7 +6,12 @@
 #define CHROME_BROWSER_EXTENSIONS_CHROME_EXTENSION_FUNCTION_DETAILS_H_
 
 #include "base/memory/raw_ptr.h"
+#include "extensions/buildflags/buildflags.h"
 #include "ui/gfx/native_widget_types.h"
+
+// TODO(crbug.com/419057482): Once we have a cross-platform interface for
+// browser windows, port this to desktop Android.
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS));
 
 class ExtensionFunction;
 
@@ -18,8 +23,8 @@ class WindowController;
 // implementations.
 class ChromeExtensionFunctionDetails {
  public:
-  // Constructs a new ChromeExtensionFunctionDetails instance for |function|.
-  // This instance does not own |function|. |function| must outlive this
+  // Constructs a new ChromeExtensionFunctionDetails instance for `function`.
+  // This instance does not own `function`. `function` must outlive this
   // instance.
   explicit ChromeExtensionFunctionDetails(ExtensionFunction* function);
 

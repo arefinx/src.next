@@ -152,7 +152,7 @@ class NaClExtensionTest : public extensions::ExtensionBrowserTest {
 
   void CheckPluginsCreated(const Extension* extension,
                            PluginType expected_to_succeed) {
-    CheckPluginsCreated(extension->GetResourceURL("test.html"),
+    CheckPluginsCreated(extension->ResolveExtensionURL("test.html"),
                         expected_to_succeed);
   }
 
@@ -250,7 +250,7 @@ IN_PROC_BROWSER_TEST_F(NaClExtensionTest, MainFrameIsRemote) {
   content::WebContents* web_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
   ASSERT_TRUE(content::NavigateIframeToURL(
-      web_contents, "test", extension->GetResourceURL("subframe.html")));
+      web_contents, "test", extension->ResolveExtensionURL("subframe.html")));
 
   // Sanity check - the test setup should cause main frame and subframe to be in
   // a different process.
@@ -259,7 +259,7 @@ IN_PROC_BROWSER_TEST_F(NaClExtensionTest, MainFrameIsRemote) {
             subframe->GetProcess());
 
   // Insert a plugin element into the subframe.  Before the fix from
-  // https://crrev.com/2932703005 this would have trigerred a crash reported in
+  // https://crrev.com/2932703005 this would have triggered a crash reported in
   // https://crbug.com/728295.
   std::string script = R"(
       var embed = document.createElement("embed");

@@ -5,21 +5,24 @@
 #include "extensions/browser/extension_navigation_throttle.h"
 
 #include <memory>
+
 #include "base/command_line.h"
 #include "base/memory/raw_ptr.h"
 #include "base/strings/stringprintf.h"
 #include "base/values.h"
-#include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/test_extension_system.h"
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "components/crx_file/id_util.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/common/content_client.h"
 #include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/mock_navigation_throttle_registry.h"
 #include "content/public/test/navigation_simulator.h"
 #include "content/public/test/test_renderer_host.h"
 #include "content/public/test/web_contents_tester.h"
+#include "extensions/browser/extension_registrar.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
@@ -39,16 +42,15 @@ const char kAccessibleDirResource[] = "accessible_dir/foo.html";
 
 class MockBrowserClient : public content::ContentBrowserClient {
  public:
-  MockBrowserClient() {}
-  ~MockBrowserClient() override {}
+  MockBrowserClient() = default;
+  ~MockBrowserClient() override = default;
 
   // Only construct an ExtensionNavigationThrottle so that we can test it in
   // isolation.
-  std::vector<std::unique_ptr<NavigationThrottle>> CreateThrottlesForNavigation(
-      content::NavigationHandle* handle) override {
-    std::vector<std::unique_ptr<NavigationThrottle>> throttles;
-    throttles.push_back(std::make_unique<ExtensionNavigationThrottle>(handle));
-    return throttles;
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override {
+    registry.AddThrottle(
+        std::make_unique<ExtensionNavigationThrottle>(registry));
   }
 };
 
@@ -57,7 +59,7 @@ class MockBrowserClient : public content::ContentBrowserClient {
 class ExtensionNavigationThrottleUnitTest
     : public ChromeRenderViewHostTestHarness {
  public:
-  ExtensionNavigationThrottleUnitTest() {}
+  ExtensionNavigationThrottleUnitTest() = default;
 
   ExtensionNavigationThrottleUnitTest(
       const ExtensionNavigationThrottleUnitTest&) = delete;
@@ -88,10 +90,9 @@ class ExtensionNavigationThrottleUnitTest
     // Simulate installing/adding the extension.
     TestExtensionSystem* extension_system =
         static_cast<TestExtensionSystem*>(ExtensionSystem::Get(profile()));
-    ExtensionService* extension_service =
-        extension_system->CreateExtensionService(
-            base::CommandLine::ForCurrentProcess(), base::FilePath(), false);
-    extension_service->AddExtension(extension_.get());
+    extension_system->CreateExtensionService(
+        base::CommandLine::ForCurrentProcess(), base::FilePath(), false);
+    ExtensionRegistrar::Get(profile())->AddExtension(extension_);
   }
 
   void TearDown() override {
@@ -110,7 +111,9 @@ class ExtensionNavigationThrottleUnitTest
     content::MockNavigationHandle test_handle(extension_url, host);
     test_handle.set_initiator_origin(host->GetLastCommittedOrigin());
     test_handle.set_starting_site_instance(host->GetSiteInstance());
-    auto throttle = std::make_unique<ExtensionNavigationThrottle>(&test_handle);
+    content::MockNavigationThrottleRegistry test_registry(&test_handle);
+    auto throttle =
+        std::make_unique<ExtensionNavigationThrottle>(test_registry);
 
     EXPECT_EQ(expected_will_start_result, throttle->WillStartRequest().action())
         << extension_url;
@@ -152,11 +155,11 @@ TEST_F(ExtensionNavigationThrottleUnitTest, ExternalWebPage) {
       render_frame_host_tester(main_rfh())->AppendChild("child");
 
   // Only resources specified in web_accessible_resources should be allowed.
-  CheckTestCase(child, extension()->GetResourceURL(kPrivate),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kPrivate),
                 NavigationThrottle::BLOCK_REQUEST);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessible),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessible),
                 NavigationThrottle::PROCEED);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessibleDirResource),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessibleDirResource),
                 NavigationThrottle::PROCEED);
 }
 
@@ -165,23 +168,23 @@ TEST_F(ExtensionNavigationThrottleUnitTest, CrossSiteFileSystemUrl) {
 
   GURL access_filesystem(base::StringPrintf(
       "filesystem:%s/",
-      extension()->GetResourceURL(kAccessible).spec().c_str()));
+      extension()->ResolveExtensionURL(kAccessible).spec().c_str()));
   CheckTestCase(main_rfh(), access_filesystem, NavigationThrottle::CANCEL);
 }
 
 // Tests that the owning extension can access any of its resources.
 TEST_F(ExtensionNavigationThrottleUnitTest, SameExtension) {
   web_contents_tester()->NavigateAndCommit(
-      extension()->GetResourceURL("trusted.html"));
+      extension()->ResolveExtensionURL("trusted.html"));
   content::RenderFrameHost* child =
       render_frame_host_tester(main_rfh())->AppendChild("child");
 
   // All resources should be allowed.
-  CheckTestCase(child, extension()->GetResourceURL(kPrivate),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kPrivate),
                 NavigationThrottle::PROCEED);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessible),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessible),
                 NavigationThrottle::PROCEED);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessibleDirResource),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessibleDirResource),
                 NavigationThrottle::PROCEED);
 }
 
@@ -196,11 +199,11 @@ TEST_F(ExtensionNavigationThrottleUnitTest, DisabledExtensionChildFrame) {
   registry->AddDisabled(extension());
 
   // Since the extension is disabled, all requests should be blocked.
-  CheckTestCase(child, extension()->GetResourceURL(kPrivate),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kPrivate),
                 NavigationThrottle::BLOCK_REQUEST);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessible),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessible),
                 NavigationThrottle::BLOCK_REQUEST);
-  CheckTestCase(child, extension()->GetResourceURL(kAccessibleDirResource),
+  CheckTestCase(child, extension()->ResolveExtensionURL(kAccessibleDirResource),
                 NavigationThrottle::BLOCK_REQUEST);
 
   std::string second_id = crx_file::id_util::GenerateId("bar");
@@ -236,11 +239,12 @@ TEST_F(ExtensionNavigationThrottleUnitTest, DisabledExtensionMainFrame) {
   registry->AddDisabled(extension());
 
   // Since the extension is disabled, all requests should be blocked.
-  CheckTestCase(main_rfh(), extension()->GetResourceURL(kPrivate),
+  CheckTestCase(main_rfh(), extension()->ResolveExtensionURL(kPrivate),
                 NavigationThrottle::BLOCK_REQUEST);
-  CheckTestCase(main_rfh(), extension()->GetResourceURL(kAccessible),
+  CheckTestCase(main_rfh(), extension()->ResolveExtensionURL(kAccessible),
                 NavigationThrottle::BLOCK_REQUEST);
-  CheckTestCase(main_rfh(), extension()->GetResourceURL(kAccessibleDirResource),
+  CheckTestCase(main_rfh(),
+                extension()->ResolveExtensionURL(kAccessibleDirResource),
                 NavigationThrottle::BLOCK_REQUEST);
 
   std::string second_id = crx_file::id_util::GenerateId("bar");

@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/css/element_rule_collector.h"
 #include "third_party/blink/renderer/core/css/resolver/matched_properties_cache.h"
 #include "third_party/blink/renderer/core/css/resolver/style_builder.h"
+#include "third_party/blink/renderer/core/css/resolver/style_resolver_state.h"
 #include "third_party/blink/renderer/core/css/selector_checker.h"
 #include "third_party/blink/renderer/core/css/selector_filter.h"
 #include "third_party/blink/renderer/core/css/style_request.h"
@@ -71,6 +72,17 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
   const ComputedStyle* ResolveStyle(Element*,
                                     const StyleRecalcContext&,
                                     const StyleRequest& = StyleRequest());
+
+  // Resolve base style for an element passing in the base styles for the parent
+  // and the layout parent. Normally, base styles are computed as part of
+  // ResolveStyle, inheriting from the parent's stored ComputedStyle, but for
+  // after-change computations, the after-change style inherits from the
+  // parent's after-change style, which is basically the parent's base style.
+  const ComputedStyle& ResolveBaseStyle(
+      Element&,
+      const ComputedStyle* parent_base_style,
+      const ComputedStyle* layout_parent_base_style,
+      const StyleRecalcContext&);
 
   // Return a reference to the initial style singleton.
   const ComputedStyle& InitialStyle() const;
@@ -194,7 +206,7 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
                                    const ContainerSelector&,
                                    const TreeScope* selector_tree_scope);
 
-  Font ComputeFont(Element&, const ComputedStyle&, const CSSPropertyValueSet&);
+  Font* ComputeFont(Element&, const ComputedStyle&, const CSSPropertyValueSet&);
 
   // FIXME: Rename to reflect the purpose, like didChangeFontSize or something.
   void InvalidateMatchedPropertiesCache();
@@ -211,10 +223,18 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
   // Return a computed value for the passed-in property:value pair in the
   // context of the current ComputedStyle of the 'element'.
   // Returns nullptr for custom property values that are IACVT.
-  static const CSSValue* ComputeValue(Element* element,
+  static const CSSValue* ComputeValue(Element*,
+                                      const CSSPropertyName&,
+                                      const CSSValue&,
+                                      CSSToLengthConversionData::Flags&);
+  // A wrapper for the function above when not interested in the conversion
+  // flags.
+  static const CSSValue* ComputeValue(Element*,
                                       const CSSPropertyName&,
                                       const CSSValue&);
   // Resolves a single CSSValue in the context of some element's computed style.
+  //
+  // This currently always resolves the value with tree_scope=Document.
   //
   // This is intended for use by the Inspector Agent.
   static const CSSValue* ResolveValue(Element& element,
@@ -303,12 +323,6 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
   void MatchUARules(const Element&, ElementRuleCollector&);
   void MatchUserRules(ElementRuleCollector&);
   void MatchPresentationalHints(StyleResolverState&, ElementRuleCollector&);
-  // This matches `::part` selectors. It looks in ancestor scopes as far as
-  // part mapping requires.
-  void MatchPseudoPartRules(const Element&,
-                            ElementRuleCollector&,
-                            bool for_shadow_pseudo = false);
-  void MatchPseudoPartRulesForUAHost(const Element&, ElementRuleCollector&);
   void MatchPositionTryRules(ElementRuleCollector&);
   void MatchAuthorRules(const Element&, ElementRuleCollector&);
   void MatchAllRules(StyleResolverState&,
@@ -340,7 +354,9 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
 
   void ApplyPropertiesFromCascade(StyleResolverState&, StyleCascade& cascade);
 
-  bool ApplyAnimatedStyle(StyleResolverState&, StyleCascade&);
+  bool ApplyAnimatedStyle(StyleResolverState&,
+                          StyleCascade&,
+                          const StyleRecalcContext&);
   void ApplyAnchorData(StyleResolverState&);
 
   void ApplyCallbackSelectors(StyleResolverState&);
@@ -354,6 +370,22 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
 
   bool IsForcedColorsModeEnabled() const;
 
+  void ExpandInheritedVisitedProperties(StyleResolverState& state);
+
+  enum UASheetCacheKeyIndex {
+    kHTMLUASheet,
+    kSVGUASheet,
+    kMathMLUASheet,
+    kFullscreenUASheet,
+    kPrintUASheet,
+    kQuirksUASheet,
+    kViewSourceUASheet,
+    kForcedColorsUASheet,
+    kJSONUASheet,
+    kViewTransitionUASheet,
+    kPseudoElementUASheet,
+  };
+
   template <typename Functor>
   void ForEachUARulesForElement(const Element& element,
                                 ElementRuleCollector* collector,
@@ -365,6 +397,11 @@ class CORE_EXPORT StyleResolver final : public GarbageCollected<StyleResolver> {
   const subtle::UncompressedMember<const ComputedStyle> initial_style_;
   const subtle::UncompressedMember<const ComputedStyle> initial_style_for_img_;
   SelectorFilter selector_filter_;
+
+  // Micro 1-element cache.
+  Member<RuleSet> media_controls_cache_key_;
+  RuleSetGroup media_controls_cached_rule_set_group_{
+      /*rule_set_group_index=*/0u};
 
   Member<Document> document_;
   Member<StyleRuleUsageTracker> tracker_;

@@ -105,7 +105,7 @@ class BackForwardCacheBrowserTest
 
   std::string DepictFrameTree(FrameTreeNode* node);
 
-  bool HistogramContainsIntValue(base::HistogramBase::Sample sample,
+  bool HistogramContainsIntValue(base::HistogramBase::Sample32 sample,
                                  std::vector<base::Bucket> histogram_values);
 
   void EvictByJavaScript(RenderFrameHostImpl* rfh);
@@ -218,8 +218,6 @@ class BackForwardCacheBrowserTest
   // renderer for a bfcached page.
   bool fail_for_unexpected_messages_while_cached_ = true;
 };
-
-[[nodiscard]] bool WaitForDOMContentLoaded(RenderFrameHostImpl* rfh);
 
 class HighCacheSizeBackForwardCacheBrowserTest
     : public BackForwardCacheBrowserTest {
