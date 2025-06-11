@@ -99,6 +99,11 @@ jobs:
       # [This is where your actual build command runs]
       # e.g., - name: Run Build
       #         run: ./build_script.sh
+      - name: Compile the Application and Build APKs
+        run: |
+          # This is an EXAMPLE command. You must replace it with your project's actual build command.
+          # For a Chromium-based project, it might look something like this:
+          autoninja -C secondary_disk/out/android_${{ matrix.platform }} chrome_public_apk
 
       # --- ADD THIS DEBUGGING STEP ---
       - name: DEBUG - Find built APK files
@@ -114,15 +119,6 @@ jobs:
       # --- [Your build command would go here] ---
       # e.g., - name: Run Build
       #         run: ./build_script.sh
-
-      - name: Uploading APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-${{ matrix.platform }}
-          # --- MODIFIED Artifact Upload Path ---
-          # This now points to the actual build output directory.
-          # You may need to adjust this path depending on where your build process creates the APKs.
-          path: secondary_disk/out/android_${{ matrix.platform }}/*.apk
 
   sign_and_upload:
     runs-on: ubuntu-latest
